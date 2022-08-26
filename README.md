@@ -4,6 +4,7 @@ Dockerized Setup for the MinHash-based Code Recognition and Investigation Toolki
 ## Usage
 
 This repository should enable you to run a production-ready deployment of [MCRIT](https://github.com/danielplohmann/mcrit) including its frontend [MCRITweb](https://github.com/danielplohmann/mcritweb) through a pre-configured Docker setup. 
+
 ### Setup for HTTPS
 
 If you want to run the service over HTTPS
