@@ -1,0 +1,50 @@
+version: '3.3'
+
+volumes:
+  mongodb_data:
+    external: true
+services:
+  mongodb:
+    image: mongo:5.0
+    container_name: mongodb
+    restart: always
+    volumes:
+      - mongodb_data:/data/db
+    ports: 
+    - 127.0.0.1:27017-27019:27017-27019
+  mcrit-server:
+    build: ./docker/mcrit/Dockerfile.mcrit
+    depends_on:
+      - mongodb
+    volumes:
+    - ./config/:/opt/mcrit/mcrit/config/
+    ports: 
+    - 127.0.0.1:8000:8000
+  mcrit-worker:
+    build: ./docker/mcrit/Dockerfile.mcrit
+    depends_on:
+      - mongodb
+    volumes:
+    - ./config/:/opt/mcrit/mcrit/config/
+  mcritweb:
+    build: ./docker/mcrit/Dockerfile.mcritweb
+    depends_on:
+      - mcrit-server
+    ports: 
+    - 127.0.0.1:5000:5000
+  nginx:
+    image: nginx:latest
+    depends_on:
+      - mcritweb
+    restart: always
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/mcritweb_plain.conf:/etc/nginx/sites-enabled/mcritweb_plain.conf
+      # alternatively, if deployment with TLS is desired, make sure to fill the files in ./nginx/ssl
+      # - ./nginx/mcritweb_ssl.conf:/etc/nginx/sites-enabled/mcritweb_ssl.conf
+      # - ./nginx/ssl:/opt/ssl_certificates
+      - ./uwsgi_params:/etc/nginx/uwsgi_params
+      - ./log/nginx:/var/log/nginx
+    ports:
+      - 0.0.0.0:80:80
+      - 0.0.0.0:443:443
