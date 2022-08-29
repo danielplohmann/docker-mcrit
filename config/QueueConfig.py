@@ -9,7 +9,7 @@ from mcrit.queue.QueueFactory import QueueFactory
 class QueueConfig(ConfigInterface):
     # QUEUE_METHOD:... = QueueFactory.QUEUE_METHOD_FAKE
     QUEUE_METHOD: ... = QueueFactory.QUEUE_METHOD_MONGODB
-    QUEUE_SERVER: str = "localhost"
+    QUEUE_SERVER: str = "mongodb"
     # By default, MongoDbStorage's DB's name and MongoQueue's DB's name are both "mcrit"
     # Changing one DB name here or at runtime DOES NOT change the other name!
     QUEUE_MONGODB_DBNAME: str = "mcrit"

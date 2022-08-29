@@ -24,13 +24,20 @@ RUN python3.8 -m pip install -U pip setuptools
 RUN mkdir -p /root/.local/lib/python3.8/site-packages/
 RUN ln -s /usr/bin/python3.8 /usr/bin/python
 
-RUN python -m pip install
-
 # install mcritweb
 RUN git clone https://github.com/danielplohmann/mcritweb.git /opt/mcritweb
-RUN python -m pip install -p /opt/mcritweb/requirements.txt
+RUN python -m pip install -r /opt/mcritweb/requirements.txt
 
 WORKDIR /opt/mcritweb
 # don't create pyc files and immediately flush (log) buffers
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+# for mcritweb
+ENV FLASK_APP=/opt/mcritweb/mcritweb
+ENV FLASK_ENV=/opt/mcritweb/mcritweb
+ENV FLASK_DEBUG=1
+
+COPY ./entry_web_dev.sh /entry_web_dev.sh
+COPY ./entry_web_prod.sh /entry_web_prod.sh
+RUN chmod +x /entry_web_dev.sh
+RUN chmod +x /entry_web_prod.sh

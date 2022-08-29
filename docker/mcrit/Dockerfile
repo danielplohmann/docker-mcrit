@@ -24,13 +24,16 @@ RUN python3.8 -m pip install -U pip setuptools
 RUN mkdir -p /root/.local/lib/python3.8/site-packages/
 RUN ln -s /usr/bin/python3.8 /usr/bin/python
 
-RUN python -m pip install 
-
 # install mcrit
 RUN git clone https://github.com/danielplohmann/mcrit.git /opt/mcrit
-RUN python -m pip install -p /opt/mcrit/requirements.txt
+RUN python -m pip install -r /opt/mcrit/requirements.txt
+RUN python -m pip install -e /opt/mcrit
 
 WORKDIR /opt/mcrit
 # don't create pyc files and immediately flush (log) buffers
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+COPY ./entry_server.sh /entry_server.sh
+COPY ./entry_worker.sh /entry_worker.sh
+RUN chmod +x /entry_server.sh /entry_worker.sh

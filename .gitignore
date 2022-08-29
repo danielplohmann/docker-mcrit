@@ -1,0 +1,6 @@
+logs/mcrit/
+logs/mcritweb/
+logs/mongodb/
+logs/nginx/
+storage/mcritweb
+storage/mongodb
