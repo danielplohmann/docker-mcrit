@@ -16,6 +16,7 @@ services:
     depends_on:
       - mongodb
     volumes:
+      - ./repositories/mcrit:/opt/mcrit/
       - ./config/:/opt/mcrit/mcrit/config/
     entrypoint:
       - /entry_server.sh
@@ -27,6 +28,7 @@ services:
     depends_on:
       - mongodb
     volumes:
+      - ./repositories/mcrit:/opt/mcrit/
       - ./config/:/opt/mcrit/mcrit/config/
     entrypoint:
       - /entry_worker.sh
@@ -36,6 +38,7 @@ services:
     depends_on:
       - mcrit-server
     volumes:
+      - ./repositories/mcritweb:/opt/mcritweb/
       - ./storage/mcritweb:/opt/mcritweb/instance
     entrypoint:
       - /entry_web_dev.sh

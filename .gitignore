@@ -4,3 +4,5 @@ logs/mongodb/
 logs/nginx/
 storage/mcritweb
 storage/mongodb
+repositories/mcrit
+repositories/mcritweb
