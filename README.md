@@ -1,9 +1,12 @@
 # Docker MCRIT
+[![Test](https://github.com/danielplohmann/docker-mcrit/actions/workflows/test.yml/badge.svg)](https://github.com/danielplohmann/docker-mcrit/actions/workflows/test.yml)
+
 Dockerized Setup for the MinHash-based Code Recognition and Investigation Toolkit (MCRIT).
 
 ## Summary
 
-This repository should enable you to quickly run a production-ready deployment of [MCRIT](https://github.com/danielplohmann/mcrit) including its frontend [MCRITweb](https://github.com/danielplohmann/mcritweb) with minimal effort through a pre-configured Docker setup. 
+This repository intends to enable you to quickly run a production-ready deployment of [MCRIT](https://github.com/danielplohmann/mcrit) including its frontend [MCRITweb](https://github.com/fkie-cad/mcritweb) with minimal effort through a pre-configured Docker setup.  
+The latest commit on this repository will always hold references to the most recent versions of the front- and backend, and stable milestone releases will be marked as such.
 
 ## Setup
 
@@ -18,7 +21,7 @@ should build the MCRIT server and worker as well as the MCRITweb images, pull im
 The data produced and stored by the services are found in `./storage`:
 
 * `./storage/mcritweb` contains the sqlite DB for the web application and cached data, such as matching reports in JSON format
-* `./storage/mongodb`  contains all collections and indices, allowing it to persist across instance rebuilds.
+* `./storage/mongodb`  contains all collections and indices, allowing it to persist across MCRIT web instance rebuilds and updates.
 
 ### Setup for HTTP(S)
 
@@ -45,10 +48,9 @@ Note that running in development mode will not start up NGINX, meaning you can r
 ## Usage
 
 For an explanation of the usage of MCRIT itself, please refer to the respective repositories for 
-* [MCRIT](https://github.com/danielplohmann/mcrit) (backend, API, client, plugins)
-* [MCRITweb](https://github.com/danielplohmann/mcritweb) (frontend)
+* backend: [MCRIT](https://github.com/danielplohmann/mcrit) (documentation in preparation)
+* frontend: [MCRITweb](https://github.com/fkie-cad/mcritweb) ([documentation](https://github.com/fkie-cad/mcritweb/tree/master/documentation))
 
 ## History
 
-MCRIT was officially released as version 1.0.0 at Botconf 2023.  
-Links for the slides, presentation video, and paper will follow once available.
+MCRIT was officially released as version 1.0.0 at Botconf 2023 ([paper](https://journal.cecyf.fr/ojs/index.php/cybin/article/view/45), [slides](https://www.botconf.eu/wp-content/uploads/2023/04/2023-15-Plohmann_MCRIT.pdf), [video](https://www.youtube.com/watch?v=kvBHbXZZq2c&list=PL8fFmUArVzKhanPzq5HlGAUHhzRB3qDLE&index=24&ab_channel=botconfeu))
