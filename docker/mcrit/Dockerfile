@@ -36,4 +36,5 @@ ENV PYTHONUNBUFFERED=1
 
 COPY ./entry_server.sh /entry_server.sh
 COPY ./entry_worker.sh /entry_worker.sh
-RUN chmod +x /entry_server.sh /entry_worker.sh
+COPY ./entry_test.sh /entry_test.sh
+RUN chmod +x /entry_server.sh /entry_worker.sh /entry_test.sh
