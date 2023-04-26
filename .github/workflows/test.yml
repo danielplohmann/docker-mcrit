@@ -16,8 +16,9 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v3
 
-      - name: Build the docker image
+      - name: Build the docker image for MCRIT
         run: docker build -t mcrit docker/mcrit
+      - name: Build the docker image for MCRIT WEB
         run: docker build -t mcritweb docker/mcritweb
 
       - name: Check functionality of the MCRIT image
