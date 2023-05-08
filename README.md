@@ -53,4 +53,4 @@ For an explanation of the usage of MCRIT itself, please refer to the respective 
 
 ## History
 
-MCRIT was officially released as version 1.0.0 at Botconf 2023 ([paper](https://journal.cecyf.fr/ojs/index.php/cybin/article/view/45), [slides](https://www.botconf.eu/wp-content/uploads/2023/04/2023-15-Plohmann_MCRIT.pdf), [video](https://www.youtube.com/watch?v=kvBHbXZZq2c&list=PL8fFmUArVzKhanPzq5HlGAUHhzRB3qDLE&index=24&ab_channel=botconfeu))
+MCRIT was officially released as version 1.0.0 at Botconf 2023 ([paper](https://journal.cecyf.fr/ojs/index.php/cybin/article/view/45), [slides](https://www.botconf.eu/wp-content/uploads/formidable/2/2023-15-Plohmann_MCRIT.pdf), [video](https://www.youtube.com/watch?v=kvBHbXZZq2c&list=PL8fFmUArVzKhanPzq5HlGAUHhzRB3qDLE&index=24&ab_channel=botconfeu))
