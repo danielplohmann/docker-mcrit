@@ -25,7 +25,7 @@ RUN mkdir -p /root/.local/lib/python3.8/site-packages/
 RUN ln -s /usr/bin/python3.8 /usr/bin/python
 
 # install mcrit
-RUN git clone -b 'v1.2.1' --single-branch https://github.com/danielplohmann/mcrit.git /opt/mcrit
+RUN git clone -b 'v1.2.2' --single-branch https://github.com/danielplohmann/mcrit.git /opt/mcrit
 RUN python -m pip install -r /opt/mcrit/requirements.txt
 RUN python -m pip install -e /opt/mcrit
 
