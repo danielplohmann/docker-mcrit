@@ -10,10 +10,13 @@ from .StorageConfig import StorageConfig
 class McritConfig(object):
 
     # NOTE to self: always change this in setup.py as well!
-    VERSION = "1.2.0"
+    VERSION = "1.2.11"
     CONFIG_FILE_PATH = str(os.path.abspath(__file__))
     PROJECT_ROOT = str(os.path.abspath(os.sep.join([CONFIG_FILE_PATH, "..", ".."])))
 
+    # Authentication token, which can be optionally used to lock down communication with the API
+    AUTH_TOKEN = ""
+    
     ### global logging-config setup
     # Only do basicConfig if no handlers have been configured
     LOG_PATH = "./"
