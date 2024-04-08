@@ -1,4 +1,4 @@
-k# Based on Workflow for main MCRIT and the workflow used in https://github.com/fkie-cad/cwe_checker
+# Based on Workflow for main MCRIT and the workflow used in https://github.com/fkie-cad/cwe_checker
 name: Build test
 
 on: 
