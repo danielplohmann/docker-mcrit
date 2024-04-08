@@ -1,4 +1,6 @@
 FROM ubuntu:20.04
+ARG MCRITWEB_BRANCH
+ARG MCRIT_TAG
 
 RUN apt-get -y update && apt-get -y install locales locales-all
 ENV LANG en_US.UTF-8
@@ -25,8 +27,8 @@ RUN mkdir -p /root/.local/lib/python3.8/site-packages/
 RUN ln -s /usr/bin/python3.8 /usr/bin/python
 
 # install specific mcritweb+mcrit versions for this release
-RUN git clone -b 'v1.3.3' --single-branch https://github.com/fkie-cad/mcritweb.git /opt/mcritweb
-RUN python -m pip install mcrit==1.3.13
+RUN git clone -b "${MCRITWEB_BRANCH}" --single-branch https://github.com/fkie-cad/mcritweb.git /opt/mcritweb
+RUN python -m pip install mcrit==${MCRIT_TAG}
 # install remaining requirements
 RUN python -m pip install -r /opt/mcritweb/requirements.txt
 

@@ -1,4 +1,5 @@
 FROM ubuntu:20.04
+ARG MCRIT_BRANCH
 
 RUN apt-get -y update && apt-get -y install locales locales-all
 ENV LANG en_US.UTF-8
@@ -25,7 +26,7 @@ RUN mkdir -p /root/.local/lib/python3.8/site-packages/
 RUN ln -s /usr/bin/python3.8 /usr/bin/python
 
 # install mcrit
-RUN git clone -b 'v1.3.13' --single-branch https://github.com/danielplohmann/mcrit.git /opt/mcrit
+RUN git clone -b "${MCRIT_BRANCH}" --single-branch https://github.com/danielplohmann/mcrit.git /opt/mcrit
 RUN python -m pip install -r /opt/mcrit/requirements.txt
 RUN python -m pip install -e /opt/mcrit
 
