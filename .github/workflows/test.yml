@@ -1,4 +1,4 @@
-# Based on Workflow for main MCRIT and the workflow used in https://github.com/fkie-cad/cwe_checker
+k# Based on Workflow for main MCRIT and the workflow used in https://github.com/fkie-cad/cwe_checker
 name: Build test
 
 on: 
@@ -15,23 +15,9 @@ jobs:
     steps:
       - name: Clone repository
         uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: 14
-      - name: Load .env file
-        run: npm install dotenv --save-dev
-
-      - name: Build the docker image for MCRIT
-        env:
-          MCRIT_BRANCH: ${{ secrets.MCRIT_BRANCH }}
-        run: docker build -t mcrit docker/mcrit --build-arg MCRIT_BRANCH=${MCRIT_BRANCH}
-      - name: Build the docker image for MCRIT WEB
-        env:
-          MCRITWEB_BRANCH: ${{ secrets.MCRITWEB_BRANCH }}
-          MCRIT_TAG: ${{ secrets.MCRIT_TAG }}
-        run: docker build -t mcritweb docker/mcritweb --build-arg MCRITWEB_BRANCH=${MCRITWEB_BRANCH} --build-arg MCRIT_TAG=${MCRIT_TAG}
+      - name: Build the docker image for MCRIT and MCRIT WEB 
+        run: ./test_build.sh
 
       - name: Check functionality of the MCRIT image
         run: docker run --rm mcrit /entry_test.sh
+
