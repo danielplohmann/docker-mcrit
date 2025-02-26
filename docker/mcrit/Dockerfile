@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 ARG MCRIT_BRANCH
 
 RUN apt-get -y update && apt-get -y install locales locales-all
@@ -9,7 +9,7 @@ ENV LANGUAGE en_US.UTF-8
 RUN apt-get -y update && apt-get -y upgrade && apt-get install -y --no-install-recommends \
   apt-utils \
   p7zip-full \
-  python3.8 \
+  python3.10 \
   python3-pip \
   python3-dev \
   build-essential \
@@ -21,9 +21,9 @@ RUN apt-get -y update && apt-get -y upgrade && apt-get install -y --no-install-r
   curl \
   libssl-dev
 
-RUN python3.8 -m pip install -U pip setuptools
-RUN mkdir -p /root/.local/lib/python3.8/site-packages/
-RUN ln -s /usr/bin/python3.8 /usr/bin/python
+RUN python3.10 -m pip install -U pip setuptools
+RUN mkdir -p /root/.local/lib/python3.10/site-packages/
+RUN ln -s /usr/bin/python3.10 /usr/bin/python
 
 # install mcrit
 RUN git clone -b "${MCRIT_BRANCH}" --single-branch https://github.com/danielplohmann/mcrit.git /opt/mcrit
