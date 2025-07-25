@@ -2,7 +2,7 @@ version: '3.3'
 
 services:
   mongodb:
-    image: mongo:5.0
+    image: mongo:${MONGO_TAG}
     container_name: mongodb
     # restart: always
     volumes:
@@ -11,7 +11,12 @@ services:
     ports: 
     - 127.0.0.1:27017-27019:27017-27019
   mcrit-server:
-    build: ./docker/mcrit/
+    image: mcrit-server:${MCRIT_TAG}
+    build:
+      context: ./docker/mcrit/
+      args:
+        MCRIT_TAG: "${MCRIT_TAG}"
+        MCRIT_BRANCH: "${MCRIT_BRANCH}"
     container_name: mcrit-server
     depends_on:
       - mongodb
@@ -23,7 +28,12 @@ services:
     ports: 
       - 127.0.0.1:8000:8000
   mcrit-worker:
-    build: ./docker/mcrit/
+    image: mcrit-worker:${MCRIT_TAG}
+    build:
+      context: ./docker/mcrit/
+      args:
+        MCRIT_TAG: "${MCRIT_TAG}"
+        MCRIT_BRANCH: "${MCRIT_BRANCH}"
     container_name: mcrit-worker
     depends_on:
       - mongodb
@@ -33,7 +43,12 @@ services:
     entrypoint:
       - /entry_worker.sh
   mcritweb:
-    build: ./docker/mcritweb/
+    image: mcritweb:${MCRITWEB_TAG}
+    build:
+      context: ./docker/mcritweb/
+      args:
+        MCRITWEB_BRANCH: "${MCRITWEB_BRANCH}"
+        MCRIT_TAG: "${MCRIT_TAG}"
     container_name: mcritweb
     depends_on:
       - mcrit-server
