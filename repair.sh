@@ -13,7 +13,8 @@
 #
 # Serve matching after this has finished: cached match jobs do not key on corpus data, so a match
 # computed before the repairs would keep the old PicHashes.
-source .env set
+# shellcheck disable=SC1091
+source .env
 
 if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
@@ -26,7 +27,7 @@ echo "  * it rewrites stored PicHashes in place; take a dump first if you want t
 echo "  * it only needs to run once per upgrade (see the note at the top of this script)"
 echo
 printf 'Proceed (y/n)? '
-read key_result
+read -r key_result
 if [ "$key_result" = "${key_result#[Yy]}" ] ; then
     echo "Aborting..."
     exit 0
