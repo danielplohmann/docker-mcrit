@@ -75,7 +75,7 @@ class StorageConfig(ConfigInterface):
     # STORAGE_MATCHING_CACHE_MAX_BYTES to 0 disables the ceiling entirely.
     STORAGE_MATCHING_CACHE_MAX_ENTRIES: int = 0
     # How getCandidatesForMinHashes accumulates band hits:
-    #  * "numpy": per-query-function int32 hit arrays + np.unique(return_counts) (default)
+    #  * "numpy": per-query-function int64 hit arrays + np.unique(return_counts) (default)
     #  * "dict":  dict[query_fid][candidate_fid] -> count  (legacy fallback, deprecated)
     # Same results either way; "numpy" avoids the ~100 B/pair Python dict and the O(pairs) loop.
     STORAGE_CANDIDATE_ACCUMULATION: str = "numpy"
@@ -92,6 +92,68 @@ class StorageConfig(ConfigInterface):
     # function_ids per $in query. Must stay well under Mongo's 16 MB command limit; smaller
     # slices also give the thread pool something to overlap.
     STORAGE_CACHE_FETCH_SLICE_SIZE: int = 500000
+    # Skip band hashes whose posting list is longer than this when generating candidates.
+    # 0 (the default) keeps every posting list, i.e. the behaviour this knob was added to.
+    #
+    # A band hash held by a large fraction of the corpus says almost nothing about *which*
+    # samples resemble the query - it is the binary-similarity equivalent of a stopword, and
+    # it is also exactly the posting list that is expensive to read and turns into candidate
+    # pairs. Measured on 257 real Malpedia samples: band posting lists are p50=1, p99=42, but
+    # max=3598, and that tail grows with the corpus while the median does not. Capping it
+    # bounds candidate volume by (query functions x bands x cutoff) instead of by corpus size.
+    #
+    # Measured starting point: 200. At 12,500 samples that is where the traversal stops scaling
+    # with the corpus while top-10 and top-25 sample recall against the uncapped result are still
+    # 1.000 (median 1.172 s at cutoff 1000 -> 0.374 s at 200; tightening to 100 buys little more).
+    #
+    # This is a recall/latency trade: a match findable *only* through a band hash that common
+    # is no longer found by the fuzzy path. It is not a silent one - PicHash matching is
+    # unaffected, and benchmarks/compare_quality.py measures what a given cutoff costs against
+    # the uncapped result on a real corpus. See docs/scaling/ for measured numbers.
+    STORAGE_BAND_DF_CUTOFF: int = 0
+    # Cap on how many function ids one band document may hold, splitting a posting list across
+    # (band_hash, bucket) documents once it would exceed that. 0 keeps the single-document shape.
+    #
+    # This exists because MongoDB caps a document at 16 MB and a posting list is an array inside
+    # one. Measured directly, a document holds about 1.35 million ids while they fit in 32 bits
+    # and about 1.05 million once they need BSON int64. On a 7,244-sample real corpus the longest
+    # posting list across all 20 bands held 36,183 ids, which puts the wall near 270,000 samples
+    # if it grows linearly. Past it the $push does not slow down, it
+    # fails ("BSONObj size ... is invalid"), and indexing stops for any sample holding a function
+    # whose band hash is already at the cap. Sharding does not move this: a document cannot span
+    # shards.
+    #
+    # 100,000 leaves a wide margin under the cap even if postings grow heavier than measured, and
+    # keeps a single document small enough to be cheap to ship. It must stay comfortably above
+    # STORAGE_BAND_DF_CUTOFF: the cutoff selects hashes by the total df stored on bucket 0, and
+    # that stays exact only while an under-cutoff posting list still fits in one bucket, so
+    # MongoDbStorage refuses to start with a cutoff above the bucket size.
+    STORAGE_BAND_BUCKET_SIZE: int = 0
+    # How many index keys one partition of an offline index rebuild reads. 0 (the default)
+    # keeps the single-pass rebuild that groups over the whole collection server-side, i.e. the
+    # behaviour this knob was added to. 500,000 is the measured recommendation.
+    #
+    # The pichash count rebuild used to be one `$group` over every pichash in the corpus. That
+    # is a blocking stage whose accumulator holds one entry per *distinct* hash, so its memory
+    # follows the corpus; past `internalDocumentSourceGroupMaxMemoryBytes` (100 MB by default)
+    # it spills to disk and pays external merge I/O on top of the scan. Measured: k ~ +2.2 over
+    # a 1.38x corpus increase, 211.9 s at 5,243 samples against 437.1 s at 7,244.
+    #
+    # The partitioned rebuild reads the same index in bounded slices and counts runs of equal
+    # keys as it goes, so its memory is constant and its cost is one pass over the index no
+    # matter how large the vocabulary grows. Results are identical - the rebuild verifies its
+    # own total against an independent count and falls back to the grouped path if they
+    # disagree - so there is no recall or accuracy trade here, only time and memory.
+    #
+    # 500,000 keys is about 40 MB of BSON in flight per partition and few enough partitions
+    # that the per-partition round trip is noise. Lower it if the rebuild has to share a small
+    # machine; raising it buys nothing once the round trip has stopped mattering.
+    #
+    # It defaults to off despite there being no measured trade, for the same reason as the other
+    # knobs added by this work: a rebuild is the operation an operator reaches for when something
+    # is already wrong, and changing what it does underneath an existing deployment is not a
+    # change to make silently on upgrade.
+    STORAGE_REBUILD_PARTITION_SIZE: int = 0
     # limit maximum export size to protect the system against running OOM, default: 1 GB
     STORAGE_MAX_EXPORT_SIZE = 1024 * 1024 * 1024
 

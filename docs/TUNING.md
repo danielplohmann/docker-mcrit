@@ -43,6 +43,26 @@ Always keep `WiredTiger cache + Σ worker peaks + 2 GiB` inside physical RAM, an
 `mem_limit` on the worker service in `docker-compose.yml` — an unlimited container leaves any
 overcommit to the host OOM killer, which may choose mongod.
 
+A container limit is shared by every job the worker runs. To bound each job instead, set
+`QUEUE_SPAWNINGWORKER_CHILD_MAX_MEMORY` (bytes, `0` = off, the default) on a spawning worker. Once
+a second it adds up the resident memory of each job process and everything that process started,
+such as its hashing pool; a job over the limit is killed and is retried or marked failed like any
+other failing job, while the worker and the jobs beside it carry on. It needs `/proc`, so Linux
+only; elsewhere it is ignored with a warning. Resident memory counts shared pages once per
+process, so a pool of forked workers reads higher than it costs - size it against a measured peak,
+and keep it below the container limit so the job is the one stopped rather than the worker.
+Measuring reads the parent of every process on the host from `/proc` once a second per running job,
+which costs little on a worker host but adds up where thousands of processes run beside it.
+
+A worker that runs jobs in its own process (`mcrit worker`, as opposed to `spawningworker`) keeps
+what a job allocated in glibc's arenas after the job ends, so its resident size stays at its
+largest job's peak. It hands the freed memory back to the operating system after every job
+(`malloc_trim`, glibc only). Measured on a 7,244-sample corpus, a worker idle after sample matching
+jobs held 1.0-2.3 GiB without that and 0.45-0.58 GiB with it, at 30-120 ms per job and identical
+reports. `MALLOC_ARENA_MAX=2` in the worker's environment limits the arenas that fragmentation
+builds up in during a job as well; a spawning worker's job process ends with its job, so only the
+job's peak matters there.
+
 These settings are strictly better and involve no trade-off. **As of MCRIT 1.6.1 they are the
 defaults**, so on 1.6.1 or later there is nothing to set — they are listed here for what they
 buy, and because the value is what you would restore to on 1.6.0:
@@ -80,6 +100,219 @@ Notes on the individual knobs:
   removed 62 % of the scoring work at a cost of 9.5 % of matches on the sample tested. Choose
   it for analysis quality, then tune around it.
 
+## Two-stage matching: making 1-vs-N stop scaling with the corpus
+
+Everything above lowers the *slope* of 1-vs-N cost. Two knobs change its *shape*, because every
+stage of a 1-vs-N query - and the result set itself - otherwise grows with the corpus.
+
+| knob | default | what it does |
+|---|---|---|
+| `MINHASH_MATCHING_SHORTLIST_SIZE` | `0` (off) | how many corpus samples the exact matching stage may look at. A cheap stage ranks candidate samples first; only the best N are matched exactly |
+| `STORAGE_BAND_DF_CUTOFF` | `0` (off) | skip band hashes whose posting list is longer than this. A band hash held by much of the corpus is a stopword: expensive to read, uninformative about *which* samples match |
+| `MINHASH_PICHASH_MAX_MATCHES` | `0` (off) | skip PicHashes held by more than this many corpus functions, in sample and query matching alike. Same argument for the exact-match path, which the shortlist does not bound: a hash covering a common library function returns one tuple per holder |
+
+**Both default to off, so an upgrade changes nothing until you opt in.** Two indexes need one
+build each before they take effect, and neither is read until a completeness flag vouches for
+it — so the old behaviour holds until they exist:
+
+```python
+storage.rebuildFunctionRangeIndex()  # required for shortlisting
+storage.rebuildBandDfIndex()  # makes the df cutoff skip from the index, not after it
+```
+
+Measured at 12,500 samples / ~10.2M functions: 145 s and 147 s respectively.
+
+`MINHASH_MATCHING_SHORTLIST_SIZE` and `STORAGE_BAND_DF_CUTOFF` can also be chosen per request, as
+the parameters `shortlist_size` and `band_df_cutoff` of the matching and query endpoints (and the
+same keyword arguments of `McritClient`'s matching methods); the configured value is the default for
+a request that names neither. Both change which matches a report holds - hunting for tail samples
+wants the shortlist off, identifying a sample wants it on - so each job records the values it was
+run with, and a result is only reused for a request with the same values. The same holds for the
+older per-request options (`minhash_score`, `pichash_size`, `band_matches_required`): the server
+fills in the configured value of every option a request leaves out, so changing any of these
+defaults takes effect for the next request instead of being masked by results cached under the old
+one. It is the server's configuration that supplies those defaults (it used to be each worker's), so
+keep server and workers on the same configuration and upgrade them together. Upgrading to a version
+with this (#217) computes each matching request once more, since earlier results were stored
+without these values. Matching one sample against another, within a group (`sample_group_only`) or
+across several (a cross compare) takes no shortlist: it is restricted to the samples it names
+already, and a shortlist ranked over the corpus could only drop some of them; a `shortlist_size` sent
+to one of them is refused with a 400. So is a request's `band_df_cutoff` above
+`STORAGE_BAND_BUCKET_SIZE` (with band bucketing on), for the reason such a configured cutoff is
+refused at startup.
+
+Two presets name the combinations that matter, per request as `preset=` (and `preset` on
+`McritClient`'s matching methods and on a `MinHashIndex` matching job):
+
+| preset | sets | when |
+|---|---|---|
+| `hunt` | `band_matches_required=1`, `shortlist_size=0` | looking for every related sample, the tail included; the slowest |
+| `identification` | `band_matches_required=1`, shortlist on | finding out what a sample is |
+
+`identification` uses the configured `MINHASH_MATCHING_SHORTLIST_SIZE` if one is set, and 100 (the
+size measured on #195) if not. A preset only fills in what the request leaves out:
+`preset=identification&shortlist_size=25` runs with a shortlist of 25. Everything a preset does not
+name keeps its configured value, `STORAGE_BAND_DF_CUTOFF` included; add `band_df_cutoff=0` to a hunt
+that must not skip any posting list. The values come from the 48 runs measured on #217 (two queries,
+`band_matches_required` crossed with the shortlist): turning the shortlist on never moved top-10 or
+top-25 recall at any `band_matches_required`, while every value of 2 or more did - so both presets
+use 1, below the default of 2 - and `identification` was the only non-baseline configuration that
+held 1.000 on both queries, at about 3x the speed of `band_matches_required=1` without a shortlist.
+Hunting wants exactly the tail a shortlist cuts off. A third, "fast", has no measured definition
+yet, so there is none. The preset is expanded into knob values before the job is submitted, so a
+preset request and the equivalent explicit one share one job; the report's `info.matching` shows the
+values, not the preset's name. On a match restricted to the samples it names, a preset applies all
+but the shortlist. An unknown preset is refused with a 400.
+
+A shortlist needs the function range index to be complete. A database created empty on a version
+that maintains it is; **one that already held samples is not until `rebuildFunctionRangeIndex` has
+run once** (MCRIT only vouches for an index it built from the first sample), and it is incomplete
+again while that rebuild runs. Until then a requested shortlist is not applied: the job matches
+against the whole corpus and its report names the fallback under `info.matching.fallbacks`. Such a
+result is kept apart from the shortlisted one, so a request made once the index is complete gets
+the shortlisted result; only a request that attached to the job while it was still queued or
+running receives the whole-corpus one, with the fallback named in its report.
+
+`MINHASH_PICHASH_MAX_MATCHES` and `PICHASH_IMPLIES_MINHASH_MATCH` change reported matches as well but
+remain deployment settings, and they are not part of a job's cache key: after changing either, a
+repeated request is still served the result cached under the old value until it is asked for with
+`force_recalculation`.
+
+### Suggested starting point
+
+```
+MINHASH_MATCHING_SHORTLIST_SIZE = 100
+STORAGE_BAND_DF_CUTOFF = 200
+MINHASH_PICHASH_MAX_MATCHES = 0      # raise from 0 only once PicHash lookup shows up in timings
+```
+
+Measured on a fixed query set at 257 and 12,500 samples — a **48.6x** growth in corpus size,
+warm cache, repeated runs:
+
+| | 257 samples | 12,500 samples | growth |
+|---|---|---|---|
+| one-stage median | 0.429 s | 4.427 s | 10.32x (latency ~ corpus^0.60) |
+| two-stage median | 0.645 s | 0.374 s | 0.58x |
+| two-stage mean | 0.868 s | 0.835 s | 0.96x |
+| two-stage max | 1.695 s | 1.810 s | 1.07x |
+
+One-stage latency grows with the corpus; two-stage does not. Note the first row of the
+two-stage column: **on a small corpus two-stage is slower**, because the ranking stage costs
+something and there is nothing yet to save. It is worth enabling when queries have started to
+hurt, not before.
+
+### What it costs
+
+Unlike everything else in this document, these two knobs are **not** result-preserving, so they
+are quoted against the unrestricted result rather than a digest:
+
+| corpus | top-10 sample recall | top-25 sample recall | surviving function matches with identical score |
+|---|---|---|---|
+| 257 | 1.000 | 1.000 | 1.000 |
+| 10,000 | 1.000 | 1.000 | 0.9945 |
+| 12,500 | 1.000 | 1.000 | 0.9936 |
+
+Matching *within* a shortlisted sample is unchanged — same candidates, same scores. What a
+shortlist can cost is a sample not being ranked into it: overall sample recall at 12,500 samples
+is 0.67, because a query whose unrestricted answer names 5,930 matched samples gets 99. Raise
+`MINHASH_MATCHING_SHORTLIST_SIZE` if you need more of the tail; cost grows with it roughly
+linearly. PicHash matching is unaffected and stays exact, so exact matches are still reported
+whether or not their sample made the shortlist.
+
+Tuning the cutoff at 12,500 samples, shortlist held at 100: cutoff 1000 gives a 1.172 s median,
+200 gives 0.374 s, 100 gives 0.332 s — all three at top-10 and top-25 recall of 1.000. 200 is
+where the traversal stops scaling; below that there is little left to win.
+
+## Growing past ~270,000 samples: `STORAGE_BAND_BUCKET_SIZE`
+
+Separate from latency, and a hard stop rather than a slowdown. A band posting list is a
+`function_ids` array inside one document, and MongoDB caps a document at 16 MB. Measured by
+pushing ids into one document until the write is refused, a document holds about **1.35 million
+ids** while they fit in 32 bits and about **1.05 million** once they need BSON int64. On a
+7,244-sample real corpus the longest posting list across all 20 bands held 36,183 ids, so
+extrapolating it linearly puts the ceiling near **270,000 samples**.
+
+What happens there is not gradual: `$push` raises `BSONObj size ... is invalid` and the write
+fails, so indexing stops for any sample containing a function whose band hash is already at the
+cap. **Adding machines does not help** - a document cannot span shards, so this is not something
+sharding fixes.
+
+    STORAGE_BAND_BUCKET_SIZE = 100000
+
+splits a hash across `(band_hash, bucket)` documents once it would exceed that. `0` (the default)
+keeps the single-document shape. Set it comfortably above `STORAGE_BAND_DF_CUTOFF`: the cutoff
+selects hashes by the total `df` stored on bucket 0, and that stays exact only while an
+under-cutoff posting list still fits in a single bucket. At the suggested values (100,000 against
+a cutoff of 200) there is a 500x margin.
+
+**Enabling it on an existing database requires a rebuild first:**
+
+    curl http://localhost:8000/rebuild_band_df_index
+
+Documents written before the knob was on have no `bucket` field, so the upsert filter
+`{band_hash, bucket: 0}` will not match them - it would insert a second document for the hash and
+split the posting list invisibly, which no error would report. The rebuild stamps `bucket: 0` and
+is what makes them addressable. Run it after setting the knob and before the next ingest.
+
+Matching results are unchanged with it on or off; the tests assert identical matches against a
+corpus where the split is forced.
+
+The corpus that hits this ceiling depends on more than sample count. Malpedia is curated and
+deduplicated; a collection carrying many near-duplicate packed variants concentrates `df` faster
+and would reach the cap sooner. `df` on bucket 0 is worth watching:
+
+    db.band_0.find({}, {band_hash: 1, df: 1}).sort({df: -1}).limit(5)
+
+## Rebuilding the PicHash counts on a large corpus: `STORAGE_REBUILD_PARTITION_SIZE`
+
+This one is about an offline operation, not about query latency. All the indexes are maintained
+incrementally on write; a full rebuild is what you run after a bulk import, a schema change, or
+a repair. On a large corpus it is the operation that takes longest, and it is the one you are
+running when something is already wrong.
+
+    STORAGE_REBUILD_PARTITION_SIZE = 500000
+
+`0` (the default) keeps the original rebuild: one server-side `$group` over every pichash, then
+one upsert per distinct hash. A positive value switches to a partitioned scan that reads the
+`_pichash` index in slices of that many keys, counts runs of equal keys as it goes, and writes
+the counts as plain inserts in ascending key order.
+
+**The result is identical, and checked rather than assumed.** The rebuild verifies the holders
+it counted against an independent count of the functions carrying a pichash, and falls back to
+the original implementation if they disagree. The test suite compares the full
+`_pichash -> df` map produced by both implementations, entry for entry, at partition sizes small
+enough that boundary cases actually occur.
+
+Measured on corpora projected from a 7,244-sample real corpus, three repeats, medians:
+
+| samples | distinct hashes | default (`0`) | at `500000` | speedup |
+|---|---|---|---|---|
+| 1,000 | 393,858 | 51.9 s | 10.8 s | 4.81x |
+| 2,000 | 722,815 | 91.2 s | 20.8 s | 4.38x |
+| 4,000 | 1,486,935 | 188.8 s | 43.6 s | 4.33x |
+| 7,244 | 2,337,173 | 301.6 s | 73.1 s | 4.12x |
+
+Where the time goes: at the largest size the original spends 32.6 s producing the counts and
+269.0 s writing them, because upserts in the group's output order land at random positions in a
+growing index (8,690/s against 38,765/s for ascending inserts). The partitioned scan also holds
+its intermediate state in two local variables instead of a table with one entry per distinct
+hash, which is what makes the rebuild's memory independent of the corpus - the original's
+accumulator crosses MongoDB's 100 MB `$group` limit between 1,000 and 2,000 samples on this
+corpus and spills to disk from there on (4 spills, 36.7 MB at 7,244 samples).
+
+**What the measurement does not show.** It was taken on corpora reduced to the single field the
+rebuild reads, so they fit in the WiredTiger cache where a full corpus of that size does not.
+Both implementations measured *linear* there, against an earlier full-fidelity measurement of the
+original rebuild that had it growing superlinearly (437.1 s at 7,244 samples against 211.9 s at
+5,243). Treat the 4.1x as solid and the scaling behaviour as unsettled: on a corpus large enough
+to leave cache, the gap is expected to be wider, not narrower, but that has not been measured.
+The full accounting - the harness, the raw numbers and the write-up - is on the
+`research/scaling-notes` branch under `docs/scaling/`.
+
+Sizing the knob: 500,000 keys is roughly 40 MB of BSON in flight per partition, and few enough
+partitions that the per-partition round trip is noise. Lower it if the rebuild shares a small
+machine; raising it buys nothing once the round trip has stopped mattering.
+
 ## Caveats
 
 * Constants are measured on one corpus and one host. The relationships generalise; the specific
@@ -92,3 +325,9 @@ Notes on the individual knobs:
   earlier only the batch size, `BAND_MATCHES_REQUIRED` and the mongod cache size apply.
 * All measurements used single-process matching; comparisons against a pooled configuration
   will differ.
+* The two-stage numbers come from a different, smaller campaign than the rest of this document:
+  257 real Malpedia samples grown to 12,500 with synthetic samples drawn from a process fitted
+  to that corpus (functions-per-sample from its empirical distribution, signatures from a
+  preferential-attachment urn calibrated to its measured Heaps exponent). They were measured on
+  a 4-core / 16 GiB host with mongod 7.0. The shape of the result - one-stage grows with the
+  corpus, two-stage does not - is the finding; the absolute seconds are host-specific.
