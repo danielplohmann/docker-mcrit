@@ -117,13 +117,15 @@ An MCRIT or MCRITweb bump is a change to the pins in `.env` together with a `CHA
 entry has to say. `CHANGELOG.md` is where a release states whether it needs a migration - the
 disassembly split that `./migrate.sh` completes is one such step.
 
+An upgrade that crosses several MCRIT releases takes each release's `Upgrading` steps in order. From 1.9.x to 1.13 that means rebuilding the images, letting the first start build its indexes, and running `./repair.sh` once before serving matching - see the 2026-09-30 entry in `CHANGELOG.md` for the measured durations.
+
 `MONGO_TAG` is `8.0`. A fresh instance needs nothing. An existing `./storage/mongodb` written by
 5.0 cannot be opened by 8.0 directly, because MongoDB refuses to skip a major version: step it
 `5.0` -> `6.0` -> `7.0` -> `8.0`, raising `featureCompatibilityVersion` before each next step. Back
 up first; raising the FCV is not reversible. For each of `6.0`, `7.0` and `8.0` in turn:
 
 ```bash
-docker compose down
+docker compose down -t 60                         # give mongod time to shut down cleanly
 sed -i 's/^MONGO_TAG=.*/MONGO_TAG=6.0/' .env     # then 7.0, then 8.0
 docker compose up -d --wait mongodb
 docker compose exec mongodb mongosh --quiet --eval 'db.adminCommand({setFeatureCompatibilityVersion: "6.0"})'

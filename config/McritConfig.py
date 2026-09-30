@@ -8,8 +8,8 @@ from .StorageConfig import StorageConfig
 
 
 class McritConfig:
-    # NOTE to self: always change this in pyproject.toml and the README changelog as well!
-    VERSION = "1.9.0"
+    # served by /version; has to equal [project].version in pyproject.toml, which the release workflow checks
+    VERSION = "1.13.0"
     # basic pathing info
     CONFIG_FILE_PATH = str(os.path.abspath(__file__))
     PROJECT_ROOT = str(os.path.abspath(os.sep.join([CONFIG_FILE_PATH, "..", ".."])))

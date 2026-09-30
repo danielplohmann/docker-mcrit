@@ -21,6 +21,64 @@ deployment that means saying plainly what an operator has to *do*, which is what
 
 ## [Unreleased]
 
+## [2026-09-30] - MCRIT 1.13.0, MCRITweb 1.5.0
+
+MCRIT 1.10.0 through 1.13.0 in one bump: two-stage matching and per-request presets, band posting
+lists that can outgrow one document, matching kept within one architecture, typed client errors and
+timeouts, and the batch lookups and `/jobs` selectors MCRITweb's next release uses. **Matching results
+change, and the upgrade from 1.9.x has an order** - see Upgrading. MCRITweb stays at 1.5.0: its full
+suite passes unchanged against the 1.13.0 client (962 passed, 6 skipped).
+
+### Added
+
+- `repair.sh` runs the three repair jobs MCRIT 1.13 asks for - `recalculatePicHashes`,
+  `rebuildPicBlockHashIndex`, `repairMinHashes` - in that order inside the `mcrit-server` container,
+  waits for each, and checks `/status` until `num_samples_with_stale_minhashes` and
+  `num_samples_with_stale_picblockhashes` are both 0. Exercised end to end against a throwaway 1.13.0
+  server and worker. `migrate.sh` remains the 1.7.0 disassembly split.
+
+### Changed
+
+- `config/` regenerated from MCRIT 1.13.0 stock, keeping the three deviations (`STORAGE_SERVER`,
+  `QUEUE_SERVER`, `BAND_MATCHES_REQUIRED = 1`). New settings arrive at their stock defaults, all
+  result-preserving or off: `STORAGE_BAND_BUCKET_SIZE`, `STORAGE_BAND_DF_CUTOFF`,
+  `MINHASH_MATCHING_SHORTLIST_SIZE`, `STORAGE_REBUILD_PARTITION_SIZE`,
+  `QUEUE_SPAWNINGWORKER_CHILD_MAX_MEMORY` among them. The `BAND_MATCHES_REQUIRED` comment is
+  updated: since 1.13 the server resolves this default into every job that does not name `k`, and the
+  per-request presets `hunt` and `identification` both use k=1. **If you have edited `config/`
+  locally, merge rather than overwrite.**
+- `docs/TUNING.md` mirrored from MCRIT 1.13.0.
+
+### Upgrading
+
+From MCRIT 1.9.x. Rehearsed on a copy of an 8,699-sample / 11.7M-function corpus whose reports go
+back to smda 1.9, with MCRIT 1.13.0, smda 4.9.0, picblocks 2.1.0 and capstone 5.0.9 - what a rebuild
+of these images installs:
+
+1. **Rebuild both MCRIT images; do not pull code into old ones.** picblocks 2.1.0 is the floor now.
+   smda 4.9.0 escapes Intel, AArch64, CIL and Dalvik exactly as 4.5.0 did - the escaper fingerprints
+   are unchanged and so is every rehashed MinHash and PicHash - so the fingerprint check under
+   Upgrading in the README should show no change. **Upgrade server and worker together**: the server
+   now resolves the matching defaults, and an older worker fails matching jobs on arguments it does
+   not know.
+2. **The first start builds indexes before storage answers**: 34 new ones from 1.9.x, in 7.5 min on
+   that corpus. Wait for it before judging the instance unhealthy.
+3. **Run `./repair.sh`** once: 1 h 46 min, 5 min and 6 s on that corpus. On a corpus with reports
+   older than smda 4.4.5 the first step is a full pass. It is worth it beyond housekeeping: it rewrote
+   435,122 function PicHashes there, 357,474 of them in the 376 Intel samples whose reports came from
+   smda 1.9.x (62% of their functions) - exact matching against such samples had been largely broken,
+   because earlier repairs rehashed their MinHashes but never their PicHashes. **Run it once**: MCRIT
+   1.13 selects most samples again on a second run, so a repeat costs the full pass again.
+4. **Serve matching after the repairs.** Every cached match is recomputed once after this upgrade,
+   because job keys now hold the values a job runs with and a results version; job caches do not key
+   on corpus data, so a match computed before `repair.sh` finishes would keep the old PicHashes.
+
+**MongoDB is independent of this.** MCRIT 1.13 matches byte-identically on 5.0 and on 8.0, so the
+5.0 -> 8.0 steps in the README can be a window of their own, before or after. Rehearsed on the same
+44 GB corpus: each step took 3-4 s to start and at most 1 s to raise the compatibility version, with
+counts and all 128 indexes intact. Stop MongoDB with a timeout between steps (`docker compose down
+-t 60`); the default 10 s can kill a busy `mongod` and force a journal recovery.
+
 ## [2026-09-23] - MCRIT 1.9.0, MCRITweb 1.5.0
 
 MCRITweb 1.5.0: 46 pull requests, four security fixes and the function comparison view,
