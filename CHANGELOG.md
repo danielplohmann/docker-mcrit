@@ -21,6 +21,18 @@ deployment that means saying plainly what an operator has to *do*, which is what
 
 ## [Unreleased]
 
+### Changed
+
+- `repair.sh` waits for each repair job itself and reports a failed or terminated job with its last
+  error, instead of relying on `McritClient.awaitResult`. That call requests `/results/None` for a
+  failed job, so the script died with a 400 traceback (mcrit#252). It also reads
+  `QUEUE_SPAWNINGWORKER_CHILDREN_TIMEOUT` and warns when it is under 3 h, and says so before it starts.
+  This image's worker runs `mcrit worker`, which has no such limit, but a deployment that overrides the
+  worker to `mcrit spawningworker` kills a job's process at that timeout (stock 1 h) and retries it from
+  scratch. A `recalculatePicHashes` of about 1 h 50 min on an 11.7M-function corpus was killed twice
+  that way and then failed. Raise the timeout before running `repair.sh` there. Exercised end to end
+  against a throwaway 1.13.0 server and worker.
+
 ## [2026-09-30] - MCRIT 1.13.0, MCRITweb 1.5.0
 
 MCRIT 1.10.0 through 1.13.0 in one bump: two-stage matching and per-request presets, band posting
