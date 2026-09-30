@@ -25,6 +25,8 @@ echo "  * on a corpus with reports older than smda 4.4.5 the first step revisits
 echo "    budget about 1 h 45 min per 12M functions; the worker is busy for that long"
 echo "  * it rewrites stored PicHashes in place; take a dump first if you want to compare (README, Maintenance)"
 echo "  * it only needs to run once per upgrade (see the note at the top of this script)"
+echo "  * a worker overridden to run 'mcrit spawningworker' kills jobs after QUEUE_SPAWNINGWORKER_CHILDREN_TIMEOUT"
+echo "    (stock 1 h) - raise it first; the script checks and says so"
 echo
 printf 'Proceed (y/n)? '
 read -r key_result
@@ -36,8 +38,32 @@ fi
 ${COMPOSE} exec -T mcrit-server python - <<'PY'
 import os, sys, time
 from mcrit.client.McritClient import McritClient
+from mcrit.config.McritConfig import McritConfig
 
 client = McritClient("http://127.0.0.1:8000", apitoken=os.environ.get("MCRIT_AUTH_TOKEN") or None, raise_client_errors=True, raise_server_errors=True)
+
+# A worker started as `mcrit spawningworker` kills a job's process after this many seconds and retries the
+# job from scratch; recalculatePicHashes can run for hours on a large corpus. This image runs `mcrit worker`,
+# which has no such limit - the warning is for deployments that override the worker's entrypoint.
+child_timeout = getattr(McritConfig().QUEUE_CONFIG, "QUEUE_SPAWNINGWORKER_CHILDREN_TIMEOUT", 0)
+if child_timeout and child_timeout < 3 * 3600:
+    print(f"NOTE: QUEUE_SPAWNINGWORKER_CHILDREN_TIMEOUT is {child_timeout} s. If your worker runs `mcrit spawningworker`,"
+          " raise it above the recalculation's duration first (about 1 h 45 min per 12M functions), or the job is killed and retried until it fails.", flush=True)
+
+
+def await_job(job_id, sleep_time=10):
+    """The finished job, or None after reporting a failed or terminated one; awaitResult cannot tell (mcrit#252)."""
+    while True:
+        job = client.getJobData(job_id)
+        if job is not None and (job.is_failed or job.is_terminated):
+            state = "terminated" if job.is_terminated else "failed, out of attempts"
+            error = (job._data.get("last_error") or "").strip().splitlines()
+            print(f"  job {job_id} {state}" + (f": {error[-1]}" if error else ""), flush=True)
+            return None
+        if job is not None and job.result is not None:
+            return job
+        time.sleep(sleep_time)
+
 steps = [
     ("recalculatePicHashes", client.recalculatePicHashes),
     ("rebuildPicBlockHashIndex", client.rebuildPicBlockHashIndex),
@@ -47,9 +73,9 @@ for name, schedule in steps:
     started = time.time()
     job_id = schedule()
     print(f"{name}: job {job_id} scheduled", flush=True)
-    result = client.awaitResult(job_id, sleep_time=10)
-    job = client.getJobData(job_id)
-    if result is None or not job or job.is_failed:
+    job = await_job(job_id)
+    result = client.getResult(job.result) if job is not None else None
+    if result is None:
         print(f"{name}: FAILED after {time.time() - started:.0f} s - see the worker log (docker compose logs mcrit-worker)")
         sys.exit(1)
     print(f"{name}: done in {time.time() - started:.0f} s: {result}", flush=True)
