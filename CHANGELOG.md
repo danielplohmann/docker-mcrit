@@ -21,7 +21,31 @@ deployment that means saying plainly what an operator has to *do*, which is what
 
 ## [Unreleased]
 
+## [2026-10-09] - MCRIT 1.14.0, MCRITweb 1.5.0
+
+MCRIT 1.14.0 is a minor release: it adds a report of what the band df cutoff skips
+(`GET /band_df_cutoff_coverage`, `McritClient.requestBandDfCutoffCoverage()`), and it fixes the
+logbucket settings, unique blocks in memory mode, upper band buckets lost under the df cutoff, a
+function stored without disassembly failing the whole minhash batch around it, and job and result
+lookups with the memory queue. MCRITweb 1.5.0 works against it unchanged: the release adds REST API
+and changes none that MCRITweb uses.
+
+### Upgrading
+
+- **On this deployment's configuration, nothing to run.** There are no new indexes, no change to
+  `RESULTS_VERSION` and no repair jobs. Rebuild the images and restart.
+- **If `config.local/` sets `SHINGLER_LOGBUCKETS` or `SHINGLER_LOGBUCKET_RANGE` away from their
+  defaults, re-index after upgrading, and regenerate any exports taken from this instance.** Before
+  1.14.0 the installed package always hashed with the default table, whatever those two said, so
+  the stored MinHashes no longer agree with what the instance now computes.
+- **If `config.local/` sets `STORAGE_BAND_BUCKET_SIZE` and band documents were ever deleted, run
+  `rebuild_band_df_index` once.** It recreates a missing bucket 0, which the df cutoff and the new
+  coverage report otherwise cannot see.
+
 ### Changed
+
+- `config/` and `docs/TUNING.md` follow MCRIT 1.14.0. The only config change is
+  `McritConfig.VERSION`; `docs/TUNING.md` gains the section on measuring the df cutoff.
 
 - `repair.sh` waits for each repair job itself and reports a failed or terminated job with its last
   error, instead of relying on `McritClient.awaitResult`. That call requests `/results/None` for a
